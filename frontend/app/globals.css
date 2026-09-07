@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 13%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 13%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 217 33% 20%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 20%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 20%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 63% 45%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217 33% 22%;
+    --input: 217 33% 22%;
+    --ring: 224 76% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui,
+      Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic",
+      "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-slate-300;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* 마크다운 리포트 타이포그래피 */
+.markdown-body h2 {
+  @apply mb-2 mt-5 text-base font-semibold text-foreground;
+}
+.markdown-body h1 {
+  @apply mb-3 text-lg font-bold text-foreground;
+}
+.markdown-body ul {
+  @apply mb-3 list-disc space-y-1 pl-5 text-sm text-muted-foreground;
+}
+.markdown-body ol {
+  @apply mb-3 list-decimal space-y-1 pl-5 text-sm text-muted-foreground;
+}
+.markdown-body p {
+  @apply mb-2 text-sm text-muted-foreground;
+}
+.markdown-body strong {
+  @apply font-semibold text-foreground;
+}
+.markdown-body code {
+  @apply rounded bg-muted px-1 py-0.5 text-xs font-medium text-foreground;
+}
+.markdown-body blockquote {
+  @apply mb-3 border-l-2 border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800;
+}
+.markdown-body table {
+  @apply mb-3 w-full text-left text-sm;
+}
+.markdown-body th {
+  @apply border-b px-2 py-1.5 font-medium text-foreground;
+}
+.markdown-body td {
+  @apply border-b px-2 py-1.5 text-muted-foreground;
+}

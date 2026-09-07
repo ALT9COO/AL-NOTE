@@ -1,0 +1,22 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.env
+*.db
+*.db-shm
+*.db-wal
+backend/*.log
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+.env.local
+npm-debug.log*
+
+# Misc
+.DS_Store
+logs/
+frontend/certs/
+backend/uploads/
