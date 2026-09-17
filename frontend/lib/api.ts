@@ -109,7 +109,8 @@ function apiErrorDetail(error: unknown): unknown {
       return data;
     }
   }
-  return data && typeof data === "object" ? data.detail : undefined;
+  if (!data || typeof data !== "object") return undefined;
+  return (data as { detail?: unknown }).detail;
 }
 
 /** Axios 오류에서 백엔드의 detail 메시지를 추출한다. */
@@ -204,6 +205,10 @@ export const taskApi = {
   updateStatus: (taskId: string, status: TaskStatus, progress?: number) =>
     api
       .patch<Task>(`/api/tasks/${taskId}/status`, { status, progress })
+      .then((r) => r.data),
+  updateParent: (taskId: string, parentTaskId: string) =>
+    api
+      .patch<Task>(`/api/tasks/${taskId}/parent`, { parent_task_id: parentTaskId })
       .then((r) => r.data),
   addComment: (taskId: string, body: string) =>
     api.post<Task>(`/api/tasks/${taskId}/comments`, { body }).then((r) => r.data),
