@@ -20,3 +20,4 @@ npm-debug.log*
 logs/
 frontend/certs/
 backend/uploads/
+.vercel
