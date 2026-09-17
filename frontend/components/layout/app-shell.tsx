@@ -33,8 +33,17 @@ import { ROLE_LABELS, useAuth } from "@/lib/auth-context";
 import { RecordingProvider, useRecording } from "@/lib/recording-context";
 import { cn, initials } from "@/lib/utils";
 import type { AiStatus } from "@/types";
+import type { LucideIcon } from "lucide-react";
 
-const NAV = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  desc: string;
+  adminOnly?: boolean;
+};
+
+const NAV: NavItem[] = [
   { href: "/dashboard", label: "칸반 보드", icon: KanbanSquare, desc: "업무 진행 현황" },
   { href: "/meetings", label: "AI 회의실", icon: Mic, desc: "녹음 · 요약 · 반영" },
   { href: "/analytics", label: "AI 리포트", icon: ChartNoAxesCombined, desc: "기간별 경영 분석" },
