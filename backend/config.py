@@ -132,6 +132,7 @@ class Settings(BaseSettings):
 
     app_name: str = "AL Note API"
     database_url: str = f"sqlite:///{BASE_DIR / 'ainote.db'}"
+    recordings_dir: str = ""
 
     # Auth
     jwt_secret: str = "change-me-in-production-please-use-a-long-random-string"

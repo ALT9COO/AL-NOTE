@@ -21,3 +21,4 @@ logs/
 frontend/certs/
 backend/uploads/
 .vercel
+.railway

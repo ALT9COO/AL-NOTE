@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
-from config import BASE_DIR
+from config import BASE_DIR, settings
 
-RECORDINGS_DIR = BASE_DIR / "uploads" / "recordings"
+RECORDINGS_DIR = Path(settings.recordings_dir) if settings.recordings_dir else (BASE_DIR / "uploads" / "recordings")
 
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
 _EXT = {
