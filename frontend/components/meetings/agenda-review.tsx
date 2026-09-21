@@ -286,13 +286,13 @@ export function AgendaReview({
               선택 {selectedCount} / 전체 {rows.length}
             </span>
           </CardTitle>
-          <Badge variant="muted">변경된 기존 업무와 신규 후속만 표시합니다</Badge>
+          <Badge variant="muted">기존 업무 후속은 해당 카드에 붙이고, 없는 일만 신규로 표시합니다</Badge>
         </CardHeader>
         <CardContent className="space-y-3">
           {rows.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              값이 바뀐 기존 업무나, 새로 하기로 한 후속이 없습니다.
-              액션 아이템은 위 카드에서 확인하고 필요하면 아래에서 업무로 추가해 주세요.
+              값이 바뀐 기존 업무나, 목록에 없는 신규 업무가 없습니다.
+              기존 과제 F/U 는 해당 업무에 붙입니다. 액션 아이템은 위 카드에서 확인하세요.
             </p>
           ) : null}
 

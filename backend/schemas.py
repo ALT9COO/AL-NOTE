@@ -410,6 +410,12 @@ class TaskStatusUpdate(BaseModel):
     progress: int | None = Field(default=None, ge=0, le=100)
 
 
+class TaskParentUpdate(BaseModel):
+    """칸반 카드 결합 전용 — 다른 최상위 업무의 하위로 이동."""
+
+    parent_task_id: str = Field(min_length=1, max_length=30)
+
+
 TaskOut.model_rebuild()
 
 

@@ -30,6 +30,7 @@ const TONE_CLASS = {
 interface TaskCardProps {
   task: Task;
   dragging?: boolean;
+  nestingTarget?: boolean;
   dragHandleProps?: DraggableProvided["dragHandleProps"];
   onOpen: (task: Task) => void;
   onSubtaskAdded?: () => void;
@@ -44,7 +45,14 @@ function BranchRail({ last }: { last: boolean }) {
   );
 }
 
-export function TaskCard({ task, dragging, dragHandleProps, onOpen, onSubtaskAdded }: TaskCardProps) {
+export function TaskCard({
+  task,
+  dragging,
+  nestingTarget,
+  dragHandleProps,
+  onOpen,
+  onSubtaskAdded,
+}: TaskCardProps) {
   const meta = STATUS_META[task.status];
   const due = dueBadge(task.due_date);
   const collabCount = task.collaborators?.length ?? 0;
@@ -94,16 +102,22 @@ export function TaskCard({ task, dragging, dragHandleProps, onOpen, onSubtaskAdd
     <div className="space-y-0">
       <div
         className={cn(
-          "group rounded-lg border border-l-4 bg-card shadow-sm transition-all",
+          "group relative rounded-lg border border-l-4 bg-card shadow-sm transition-all",
           meta.accent,
           dragging ? "rotate-1 shadow-lg ring-2 ring-primary/30" : "hover:shadow-md",
+          nestingTarget && "scale-[1.02] border-primary bg-primary/5 ring-2 ring-primary/40",
         )}
       >
+        {nestingTarget ? (
+          <div className="pointer-events-none absolute inset-x-2 top-2 z-10 rounded-md bg-primary px-2 py-1 text-center text-[11px] font-semibold text-primary-foreground shadow">
+            여기에 놓아 하위 업무로 이동
+          </div>
+        ) : null}
         <div className="flex items-start gap-1 p-3 pb-0">
           {task.can_edit ? (
             <span
               className="mt-0.5 shrink-0 cursor-grab rounded p-0.5 text-muted-foreground hover:bg-muted active:cursor-grabbing"
-              aria-label="드래그하여 상태 변경"
+              aria-label="드래그하여 상태 변경 또는 다른 업무의 하위로 이동"
               {...dragHandleProps}
             >
               <GripVertical className="h-3.5 w-3.5" />

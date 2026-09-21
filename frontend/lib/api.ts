@@ -73,11 +73,28 @@ export const api = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
+function requestPath(config?: { url?: string; baseURL?: string }) {
+  const url = `${config?.baseURL ?? ""}${config?.url ?? ""}`;
+  try {
+    return new URL(url, "http://local.invalid").pathname;
+  } catch {
+    return url;
+  }
+}
+
+function bearerFromHeader(value: unknown) {
+  if (typeof value !== "string") return "";
+  return value.replace(/^Bearer\s+/i, "").trim();
+}
+
 api.interceptors.request.use((config) => {
   config.baseURL = apiBaseUrl();
   if (typeof window !== "undefined") {
+    const path = requestPath(config);
     const token = getStoredToken();
-    if (token) config.headers.Authorization = `Bearer ${token}`;
+    if (token && !path.includes("/api/auth/login")) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
   }
   if (config.responseType === "blob") {
     config.headers.setContentType(null, false);
@@ -89,9 +106,17 @@ api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401 && typeof window !== "undefined") {
-      clearStoredToken();
-      if (!window.location.pathname.startsWith("/login")) {
-        window.location.href = "/login?reason=expired";
+      const path = requestPath(error.config);
+      const integrationAuth =
+        path.includes("/api/calendar") || path.includes("/api/auth/login");
+      const sent = bearerFromHeader(error.config?.headers?.Authorization);
+      const current = getStoredToken() ?? "";
+      const staleRequest = Boolean(sent && current && sent !== current);
+      if (!integrationAuth && !staleRequest) {
+        clearStoredToken();
+        if (!window.location.pathname.startsWith("/login")) {
+          window.location.href = "/login?reason=expired";
+        }
       }
     }
     return Promise.reject(error);

@@ -101,8 +101,28 @@ def _local_hostnames() -> set[str]:
     return {item for item in names if item}
 
 
+def _configured_public_hosts() -> set[str]:
+    """CORS·프론트 주소로 허용한 공개 호스트 (Vercel 등)."""
+    hosts: set[str] = set()
+    values = [
+        *settings.cors_origin_list,
+        settings.frontend_url,
+        settings.public_base_url,
+        settings.ms_redirect_uri,
+    ]
+    for value in values:
+        raw = (value or "").strip()
+        if not raw:
+            continue
+        parsed = urlparse(raw if "://" in raw else f"https://{raw}")
+        host = (parsed.hostname or "").lower()
+        if host:
+            hosts.add(host)
+    return hosts
+
+
 def is_allowed_redirect_uri(uri: str) -> bool:
-    """사내 LAN·localhost 접속만 OAuth 리디렉션으로 허용한다."""
+    """사내 LAN·localhost 및 설정된 공개 프론트(Vercel)만 OAuth 리디렉션으로 허용한다."""
     parsed = urlparse((uri or "").strip())
     if parsed.scheme not in ("https", "http"):
         return False
@@ -113,6 +133,8 @@ def is_allowed_redirect_uri(uri: str) -> bool:
         return False
     if host in _local_hostnames() or host.endswith(".local") or host.endswith(".lan"):
         return True
+    if host in _configured_public_hosts() or host.endswith(".vercel.app"):
+        return parsed.scheme == "https" or host in ("localhost", "127.0.0.1")
     try:
         ip = ipaddress.ip_address(host)
     except ValueError:
@@ -188,9 +210,11 @@ def frontend_origin_from_redirect(redirect_uri: str) -> str:
 
 
 def canonical_public_origin() -> str:
-    """다른 PC가 쓰는 사내 주소. localhost/0.0.0.0 은 쓰지 않는다."""
-    configured = (settings.public_base_url or "").strip().rstrip("/")
-    if configured:
+    """브라우저가 쓸 공개 주소. Vercel/FRONTEND_URL 을 컨테이너 LAN IP 보다 우선한다."""
+    for raw in (settings.public_base_url, settings.frontend_url):
+        configured = (raw or "").strip().rstrip("/")
+        if not configured:
+            continue
         host = urlparse(configured if "://" in configured else f"https://{configured}").hostname
         if host and not is_loopback_host(host) and not is_unusable_host(host):
             if "://" not in configured:
@@ -240,6 +264,10 @@ def suggested_redirect_uris(app: GraphApp) -> list[str]:
     """Azure 앱 등록에 넣을 URI 후보 목록."""
     hosts = ["localhost", "127.0.0.1", *_lan_ipv4_addresses(), *sorted(_local_hostnames())]
     uris = {f"https://{host}:{DEFAULT_HTTPS_PORT}{CALLBACK_PATH}" for host in hosts if host}
+    for origin in (settings.frontend_url, settings.public_base_url, *settings.cors_origin_list):
+        callback = callback_uri_from_origin(origin)
+        if callback and is_allowed_redirect_uri(callback):
+            uris.add(callback)
     if app.redirect_uri and is_allowed_redirect_uri(app.redirect_uri):
         uris.add(normalize_redirect_uri(app.redirect_uri))
     return sorted(uris)

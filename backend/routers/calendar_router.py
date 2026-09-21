@@ -329,7 +329,12 @@ def list_events(
             row.last_sync_message = str(exc)
             row.last_synced_at = datetime.now()
             db.commit()
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+            return CalendarEventsResponse(
+                connection=_connection_out(row, app),
+                range_start=window[0],
+                range_end=window[1],
+                events=[],
+            )
         except cal.CalendarError as exc:
             row.last_sync_ok = False
             row.last_sync_message = str(exc)
@@ -396,7 +401,7 @@ def create_event(
         row.last_sync_ok = False
         row.last_sync_message = str(exc)
         db.commit()
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except cal.CalendarError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 

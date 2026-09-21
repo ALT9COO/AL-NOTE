@@ -36,6 +36,7 @@ from schemas import (
     TaskAlertOut,
     TaskCreate,
     TaskOut,
+    TaskParentUpdate,
     TaskStatusUpdate,
     TaskUpdate,
     TrendPoint,
@@ -284,6 +285,64 @@ def update_task_status(
         )
     elif task.parent_task_id:
         touch_parent_after_child_change(db, task, user.user_id)
+    task.updated_at = datetime.now()
+    db.commit()
+    db.refresh(task)
+    return task_to_out(db, user, task, include_children=True)
+
+
+@router.patch("/{task_id}/parent", response_model=TaskOut)
+def update_task_parent(
+    task_id: str, payload: TaskParentUpdate, user: CurrentUser, db: DbSession
+) -> TaskOut:
+    """최상위 업무를 다른 최상위 업무의 하위로 이동한다."""
+    task = _get_task_or_404(db, task_id)
+    parent = _get_task_or_404(db, payload.parent_task_id)
+    assert_can_edit(db, user, task)
+    assert_can_edit(db, user, parent)
+
+    if task.task_id == parent.task_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="업무 자기 자신을 상위 업무로 지정할 수 없습니다.",
+        )
+    if task.parent_task_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="이미 하위 업무인 카드는 다시 중첩할 수 없습니다.",
+        )
+    if parent.parent_task_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="하위 업무 아래에는 다시 하위 업무를 둘 수 없습니다.",
+        )
+    if active_children(db, task.task_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="하위 업무가 있는 카드는 다른 업무의 하위로 이동할 수 없습니다.",
+        )
+
+    old_status = task.status
+    old_progress = int(task.progress or 0)
+    task.parent_task_id = parent.task_id
+    task.status = parent.status
+    task.progress = int(parent.progress or 0)
+    log_task_changes(
+        db,
+        task,
+        user.user_id,
+        old_status=old_status,
+        old_progress=old_progress,
+        old_issues=task.issues or "",
+    )
+    add_activity(
+        db,
+        task,
+        user_id=user.user_id,
+        kind="hierarchy",
+        body=f"{parent.task_id} 업무의 하위로 이동했습니다.",
+    )
+    recompute_parent_progress(db, parent, user.user_id)
     task.updated_at = datetime.now()
     db.commit()
     db.refresh(task)
@@ -749,7 +808,7 @@ def email_report(
         row.last_sync_ok = False
         row.last_sync_message = str(exc)
         db.commit()
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except cal.CalendarError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 

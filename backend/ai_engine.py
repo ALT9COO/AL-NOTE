@@ -770,16 +770,19 @@ PARSE_SYSTEM_PROMPT = """당신은 한국 기업의 회의록을 분석하는 �
 3. progress 는 0~100 사이 정수입니다. 기존 업무는 전사에 진행률·상태·이슈·담당·기한이
    명시된 경우에만 그 필드를 바꾸고, 언급이 없으면 해당 필드를 비우거나 생략합니다.
    추정치로 기존 업무의 진행률을 바꿔 넣지 마세요.
-4. task_updates 에는 다음만 넣습니다.
+4. task_updates 분류는 기존 업무 우선입니다.
+   - 기존 업무 후속(F/U, 팔로업, 후속 확인/조치, 진행 점검/공유, 기존 건 확인, 재공유 등)은
+     새 업무가 아닙니다. "현재 업무 목록"에서 같은 과제의 task_id 를 그대로 쓰고
+     업무명은 기존 이름을 유지하세요. 후속으로 바뀐 상태/진행률/이슈/담당/기한만 넣습니다.
    - 기존 업무: 전사에서 상태/진행률/이슈/담당/기한이 실제로 바뀐 항목만.
-     task_id 는 "현재 업무 목록"의 값을 그대로 사용합니다.
      이름만 비슷하고 변경 근거가 없으면 넣지 마세요.
-   - 신규 업무: 회의에서 새로 하기로 한 일, 후속 액션, 기존 목록에 없는 핵심 과제.
+   - 신규 업무: 현재 목록에 없는, 회의에서 새로 착수하기로 한 일만.
      task_id 는 "NEW" 로 두고 task_name 을 명확히 작성합니다.
-   기존 업무와 이름이 애매하게만 비슷하면 기존 ID를 쓰지 말고 NEW 로 만드세요.
+     기존 과제와 주제가 같으면 NEW 로 만들지 마세요.
    현재 업무 목록을 관례적으로 전부 복사해 넣지 마세요.
-5. action_items 에 넣은 후속은 반드시 task_updates 에도 task_id "NEW" 로 다시 넣습니다.
-   (칸반에 업무로 반영하기 위함입니다.)
+5. action_items 에는 회의에서 하기로 한 일을 적습니다.
+   기존 업무 F/U 면 task_updates 에도 그 기존 task_id 로 넣고, 목록에 없는 새 일만 NEW 로 넣습니다.
+   같은 후속을 기존 업무와 NEW 로 중복하지 마세요.
 6. assignee 는 제공된 "구성원 목록"의 user_id 값을 사용합니다. 확실하지 않으면 빈 문자열("")로 둡니다.
 7. 날짜는 YYYY-MM-DD 형식이며 알 수 없으면 빈 문자열("")로 둡니다.
 8. 추측으로 사실을 만들지 말고 전사에 근거가 있는 내용만 담습니다.
@@ -844,7 +847,7 @@ def parse_meeting(
 \"\"\"
 
 위 내용을 분석해 스키마에 맞는 JSON 만 출력하세요.
-기존 업무는 값이 바뀐 것만, 회의의 핵심 후속은 NEW 업무로 넣으세요."""
+기존 업무의 F/U·진행 점검은 기존 task_id 에 붙이고, 목록에 없는 새 일만 NEW 로 넣으세요."""
 
     raw = call_llm(
         PARSE_SYSTEM_PROMPT,
@@ -867,17 +870,121 @@ def _as_list(value: Any) -> list:
     return [value]
 
 
-def _title_key(value: str) -> str:
-    return re.sub(r"\s+", "", (value or "").casefold())
+_FOLLOWUP_RE = re.compile(
+    r"(?:"
+    r"\bf/?u\b|"
+    r"follow[\s-]*ups?|"
+    r"팔로우\s*업|"
+    r"팔로\s*업|"
+    r"후속\s*(?:조치|진행|확인|건|작업)?"
+    r"|기존\s*(?:건|업무|과제)?"
+    r"|해당\s*(?:건|업무|과제)?"
+    r"|추가\s*(?:확인|진행|작업|조치)"
+    r"|재확인"
+    r"|진행\s*(?:상황|현황|점검|공유|확인)"
+    r"|현황\s*(?:공유|점검)"
+    r"|업데이트"
+    r"|\bupdates?\b"
+    r")",
+    re.IGNORECASE,
+)
+_TITLE_NOISE_RE = re.compile(r"[\s\-_/()\[\]【】「」『』·•.,:：;!！?？~～'\"“”‘’]+")
+_GENERIC_TITLE_CORES = {
+    "api",
+    "ui",
+    "qa",
+    "stt",
+    "it",
+    "ai",
+    "개발",
+    "검토",
+    "진행",
+    "확인",
+    "공유",
+    "관련",
+    "업무",
+    "과제",
+    "일정",
+    "이슈",
+    "후속",
+    "조치",
+    "작업",
+    "수정",
+    "개선",
+    "관리",
+}
 
 
-def _titles_close(left: str, right: str, cutoff: float = 0.85) -> bool:
-    a, b = _title_key(left), _title_key(right)
+def _core_title(value: str) -> str:
+    text = _FOLLOWUP_RE.sub(" ", value or "")
+    return _TITLE_NOISE_RE.sub("", text.casefold())
+
+
+def _title_score(left: str, right: str) -> float:
+    a, b = _core_title(left), _core_title(right)
     if not a or not b:
-        return False
+        return 0.0
     if a == b:
+        return 1.0
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
+def _titles_close(left: str, right: str, cutoff: float = 0.8) -> bool:
+    return _title_score(left, right) >= cutoff
+
+
+def _looks_like_followup_name(proposed: str, current: str) -> bool:
+    if _FOLLOWUP_RE.search(proposed or ""):
         return True
-    return difflib.SequenceMatcher(None, a, b).ratio() >= cutoff
+    p, c = _core_title(proposed), _core_title(current)
+    return bool(p and c and p == c and (proposed or "").strip() != (current or "").strip())
+
+
+def _match_existing_task_name(name: str, name_to_id: dict[str, str]) -> str:
+    """후속(F/U) 표현을 걷어낸 뒤 기존 업무명에 붙인다. 애매하면 NEW."""
+    name = (name or "").strip()
+    if not name:
+        return "NEW"
+    if name in name_to_id:
+        return name_to_id[name]
+
+    core = _core_title(name)
+    if not core:
+        return "NEW"
+
+    by_core: dict[str, list[str]] = {}
+    for task_name, tid in name_to_id.items():
+        c = _core_title(task_name)
+        if c:
+            by_core.setdefault(c, []).append(tid)
+
+    exact = list(dict.fromkeys(by_core.get(core, [])))
+    if len(exact) == 1:
+        return exact[0]
+
+    if core not in _GENERIC_TITLE_CORES and len(core) >= 3:
+        contained: list[str] = []
+        for c, tids in by_core.items():
+            if core == c:
+                continue
+            if core in c or (c not in _GENERIC_TITLE_CORES and len(c) >= 3 and c in core):
+                contained.extend(tids)
+        uniq = list(dict.fromkeys(contained + exact))
+        if len(uniq) == 1:
+            return uniq[0]
+
+    scored: list[tuple[float, str]] = []
+    for task_name, tid in name_to_id.items():
+        ratio = _title_score(name, task_name)
+        if ratio >= 0.86:
+            scored.append((ratio, tid))
+    if not scored:
+        return "NEW"
+    scored.sort(key=lambda item: item[0], reverse=True)
+    best_score, best_id = scored[0]
+    if any(tid != best_id and best_score - score <= 0.04 for score, tid in scored[1:]):
+        return "NEW"
+    return best_id
 
 
 def _field_provided(item: dict[str, Any], key: str) -> bool:
@@ -920,15 +1027,11 @@ def normalize_parsed(
     name_to_user = {u["user_name"]: u["user_id"] for u in users_context}
 
     def _match_task(item: dict[str, Any]) -> str:
-        tid = str(item.get("task_id") or "").strip().upper()
+        tid = str(item.get("task_id") or "").strip()
         name = str(item.get("task_name") or "").strip()
-        if tid in task_by_id:
+        if tid.upper() != "NEW" and tid in task_by_id:
             return tid
-        if name in name_to_id:
-            return name_to_id[name]
-        # 애매한 유사 일치는 기존 업무에 억지로 붙이지 않는다.
-        close = difflib.get_close_matches(name, list(name_to_id), n=1, cutoff=0.88)
-        return name_to_id[close[0]] if close else "NEW"
+        return _match_existing_task_name(name, name_to_id)
 
     def _match_user(value: Any) -> str:
         raw = str(value or "").strip()
@@ -973,11 +1076,15 @@ def normalize_parsed(
             if _field_provided(item, "due_date")
             else base["due_date"]
         )
-        task_name = (
-            str(item.get("task_name") or "").strip()
-            if _field_provided(item, "task_name")
-            else base["task_name"]
-        ) or base["task_name"]
+        incoming_name = str(item.get("task_name") or "").strip()
+        if (
+            _field_provided(item, "task_name")
+            and incoming_name
+            and not _looks_like_followup_name(incoming_name, base["task_name"])
+        ):
+            task_name = incoming_name
+        else:
+            task_name = base["task_name"]
         return {
             "task_id": base["task_id"],
             "task_name": task_name,
@@ -990,8 +1097,21 @@ def normalize_parsed(
             "change_note": "",
         }
 
-    updates: list[dict[str, Any]] = []
+    def _existing_base(task_id: str, current: dict[str, Any]) -> dict[str, Any]:
+        return existing_updates.get(task_id) or {
+            "task_id": task_id,
+            "task_name": str(current.get("task_name") or ""),
+            "assignee": current.get("assigned_to") or "",
+            "progress": int(current.get("progress") or 0),
+            "status": str(current.get("status") or "진행중"),
+            "issues": str(current.get("issues") or "").strip(),
+            "due_date": str(current.get("due_date") or ""),
+            "is_new": False,
+            "change_note": "",
+        }
+
     existing_updates: dict[str, dict[str, Any]] = {}
+    new_updates: list[dict[str, Any]] = []
     for item in _as_list(data.get("task_updates")):
         if not isinstance(item, dict):
             continue
@@ -1014,35 +1134,18 @@ def normalize_parsed(
                 "issues": str(item.get("issues") or "").strip(),
                 "due_date": _clean_date(item.get("due_date")),
                 "is_new": True,
-                "change_note": "회의 후속으로 신규 등록",
+                "change_note": "회의에서 신규 등록",
             }
             if not proposed["task_name"]:
                 continue
-            if any(_titles_close(proposed["task_name"], u["task_name"]) for u in updates):
+            if any(_titles_close(proposed["task_name"], u["task_name"]) for u in new_updates):
                 continue
-            updates.append(proposed)
+            new_updates.append(proposed)
             continue
 
-        base = existing_updates.get(task_id) or {
-            "task_id": task_id,
-            "task_name": str(current.get("task_name") or ""),
-            "assignee": current.get("assigned_to") or "",
-            "progress": int(current.get("progress") or 0),
-            "status": str(current.get("status") or "진행중"),
-            "issues": str(current.get("issues") or "").strip(),
-            "due_date": str(current.get("due_date") or ""),
-            "is_new": False,
-            "change_note": "",
-        }
-        existing_updates[task_id] = _overlay_existing(current, item, base)
-
-    for task_id, proposed in existing_updates.items():
-        current = task_by_id[task_id]
-        note = _change_note(current, proposed)
-        if not note:
-            continue
-        proposed["change_note"] = note
-        updates.append(proposed)
+        existing_updates[task_id] = _overlay_existing(
+            current, item, _existing_base(task_id, current)
+        )
 
     agenda_items = []
     for item in _as_list(data.get("agenda_items")):
@@ -1075,9 +1178,24 @@ def normalize_parsed(
         title = action.get("title") or ""
         if not title:
             continue
-        if any(_titles_close(title, u["task_name"]) for u in updates):
+        if any(_titles_close(title, u["task_name"]) for u in new_updates):
             continue
-        updates.append(
+        matched_id = _match_task({"task_id": "", "task_name": title})
+        current = task_by_id.get(matched_id, {})
+        if matched_id != "NEW" and current:
+            overlay: dict[str, Any] = {}
+            if action.get("assignee"):
+                overlay["assignee"] = action["assignee"]
+            if action.get("due_date"):
+                overlay["due_date"] = action["due_date"]
+            if action.get("note"):
+                overlay["issues"] = action["note"]
+            if overlay:
+                existing_updates[matched_id] = _overlay_existing(
+                    current, overlay, _existing_base(matched_id, current)
+                )
+            continue
+        new_updates.append(
             {
                 "task_id": "NEW",
                 "task_name": title,
@@ -1090,6 +1208,16 @@ def normalize_parsed(
                 "change_note": "액션 아이템에서 신규 업무로 반영",
             }
         )
+
+    updates: list[dict[str, Any]] = []
+    for task_id, proposed in existing_updates.items():
+        current = task_by_id[task_id]
+        note = _change_note(current, proposed)
+        if not note:
+            continue
+        proposed["change_note"] = note
+        updates.append(proposed)
+    updates.extend(new_updates)
 
     return {
         "meeting_title": str(data.get("meeting_title") or "제목 없는 회의").strip(),

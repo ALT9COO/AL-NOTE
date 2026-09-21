@@ -78,7 +78,7 @@ const VIEWS: { id: ViewMode; label: string; icon: typeof KanbanSquare; hint: str
     id: "kanban",
     label: "칸반",
     icon: KanbanSquare,
-    hint: "카드를 드래그해 상태를 옮깁니다. 할당·진행중·완료는 진행률이 맞춰지고, 이슈 발생은 그대로 둡니다.",
+    hint: "카드를 상태 열로 옮기거나 다른 카드 위에 놓아 하위 업무로 만들 수 있습니다.",
   },
   {
     id: "list",
@@ -217,6 +217,43 @@ export default function DashboardPage() {
     } catch (error) {
       setTasks(previous);
       toast.error(apiErrorMessage(error, "상태 변경에 실패했습니다."));
+    }
+  }
+
+  async function handleNest(task: Task, parent: Task) {
+    if ((task.children?.length ?? task.child_count ?? 0) > 0) {
+      toast.error("하위 업무가 있는 카드는 다른 업무의 하위로 이동할 수 없습니다.");
+      return;
+    }
+    if (task.parent_task_id || parent.parent_task_id) {
+      toast.error("하위 업무는 한 단계까지만 구성할 수 있습니다.");
+      return;
+    }
+    if (!parent.can_edit) {
+      toast.error("상위 업무로 지정할 카드의 편집 권한이 필요합니다.");
+      return;
+    }
+
+    const previous = tasks;
+    setTasks((items) =>
+      items.map((item) =>
+        item.task_id === task.task_id
+          ? {
+              ...item,
+              parent_task_id: parent.task_id,
+              status: parent.status,
+              progress: parent.progress,
+            }
+          : item,
+      ),
+    );
+    try {
+      await taskApi.updateParent(task.task_id, parent.task_id);
+      await loadTasks();
+      toast.success(`${task.task_id}을(를) ${parent.task_id}의 하위 업무로 이동했습니다.`);
+    } catch (error) {
+      setTasks(previous);
+      toast.error(apiErrorMessage(error, "하위 업무 이동에 실패했습니다."));
     }
   }
 
@@ -457,6 +494,7 @@ export default function DashboardPage() {
             progress_locked: childrenOf(tasks, task.task_id).length > 0,
           }))}
           onMove={handleMove}
+          onNest={handleNest}
           onEdit={openEdit}
           onSubtaskAdded={loadTasks}
         />
